@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NotificationService.Domain\NotificationService.Domain.csproj" />
+  </ItemGroup>
+</Project>

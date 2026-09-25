@@ -1,0 +1,23 @@
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{json,yml,yaml,props,csproj,slnx,xml}]
+indent_size = 2
+
+[*.cs]
+csharp_style_namespace_declarations = file_scoped
+csharp_style_var_for_built_in_types = true
+csharp_style_var_when_type_is_apparent = true
+dotnet_style_readonly_field = true
+dotnet_sort_system_directives_first = true
+
+# Enforced in the build (EnforceCodeStyleInBuild + TreatWarningsAsErrors)
+# IDE0161: file-scoped namespaces, IDE0044: readonly fields
+dotnet_diagnostic.IDE0161.severity = warning
+dotnet_diagnostic.IDE0044.severity = warning

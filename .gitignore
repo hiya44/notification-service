@@ -1,0 +1,21 @@
+# Build output
+bin/
+obj/
+artifacts/
+
+# IDEs
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.DotSettings.user
+
+# Test results
+TestResults/
+coverage*/
+*.trx
+
+# Local settings
+appsettings.*.local.json
+.env
