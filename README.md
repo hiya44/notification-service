@@ -27,6 +27,24 @@ through configurable, prioritised providers with failover and retries.
 - After 8 dispatches (about two hours) the notification is marked `Failed`.
 - A `PermanentFailure` (e.g. the address does not exist) fails the notification immediately, because retrying cannot help.
 
+## Provider configuration
+
+Providers are configured in the `Notifications:Providers` section, keyed by provider name:
+
+```json
+"Notifications": {
+  "Providers": {
+    "Twilio":    { "Enabled": true, "Priority": 1, "Channels": [ "Sms" ] },
+    "Vonage":    { "Enabled": true, "Priority": 2, "Channels": [ "Sms" ] }
+  }
+}
+```
+
+- A provider is **eligible** for a channel when it is configured, enabled, configured for that channel and technically supports it.
+- Eligible providers are tried in ascending `Priority` (1 first); equal priorities are ordered by name.
+- A provider implementation without a configuration entry is never used, so adding code alone does not route traffic to it.
+- Configuration is read on every dispatch, so disabling or re-prioritising a provider does not need a restart.
+
 ## Running locally
 
 ```bash
