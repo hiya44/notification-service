@@ -15,9 +15,22 @@ through configurable, prioritised providers with failover and retries.
 | **Content** | What the customer receives: a body and, for email, a subject. |
 | **Provider** | An external service that delivers notifications on one or more channels (e.g. Twilio, Amazon SES). |
 | **Delivery attempt** | One provider being asked to deliver a notification, and the outcome. |
+| **Idempotency key** | A caller-chosen key for one logical send request; repeating the request with the same key returns the original notification. |
 | **Dispatch** | One pass over the eligible providers for a notification, in priority order, until one delivers it. |
 | **Retry** | A later dispatch, scheduled when a dispatch ended without delivery. |
 | **Delivery outcome** | `Delivered`, `TransientFailure` (another provider or a later retry may succeed) or `PermanentFailure` (no provider can deliver it, e.g. the address does not exist). |
+
+## Accepting notifications
+
+Sending is asynchronous: a request is validated, stored as `Pending` and acknowledged immediately; delivery happens in the background.
+This keeps callers independent of provider latency and outages, and means an accepted notification survives restarts.
+
+**Idempotency.** Callers retry requests too (timeouts, their own restarts). An optional idempotency key prevents duplicates:
+
+- Same key, same details: the original notification is returned and nothing new is created.
+- Same key, different details: the request is rejected as a conflict, since silently returning the earlier notification would hide a caller bug.
+- Two concurrent requests with the same key: a unique index decides the winner; the other request returns the winner's notification.
+- Assumption: keys are unique across all calling services (e.g. GUIDs or `<service>:<business id>`). With authentication in place, keys would be scoped per caller.
 
 ## Dispatching and failover
 

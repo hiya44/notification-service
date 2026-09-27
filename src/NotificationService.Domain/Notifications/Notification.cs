@@ -18,12 +18,14 @@ public sealed class Notification
         CustomerId customerId,
         Recipient recipient,
         NotificationContent content,
+        IdempotencyKey? idempotencyKey,
         DateTimeOffset createdAt)
     {
         Id = id;
         CustomerId = customerId;
         Recipient = recipient;
         Content = content;
+        IdempotencyKey = idempotencyKey;
         CreatedAt = createdAt;
         Status = NotificationStatus.Pending;
         NextAttemptAt = createdAt;
@@ -38,6 +40,9 @@ public sealed class Notification
     public Channel Channel => Recipient.Channel;
 
     public NotificationContent Content { get; }
+
+    /// <summary>Supplied by the caller so that a retried request does not create a second notification.</summary>
+    public IdempotencyKey? IdempotencyKey { get; }
 
     public NotificationStatus Status { get; private set; }
 
@@ -62,12 +67,20 @@ public sealed class Notification
         CustomerId customerId,
         Recipient recipient,
         NotificationContent content,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        IdempotencyKey? idempotencyKey = null)
     {
         EnsureContentFitsChannel(recipient.Channel, content);
 
-        return new Notification(NotificationId.New(), customerId, recipient, content, now);
+        return new Notification(NotificationId.New(), customerId, recipient, content, idempotencyKey, now);
     }
+
+    /// <summary>
+    /// Whether this notification was created from the same request details.
+    /// Used to tell a genuine retry apart from a different request reusing an idempotency key.
+    /// </summary>
+    public bool IsSameRequestAs(CustomerId customerId, Recipient recipient, NotificationContent content) =>
+        CustomerId == customerId && Recipient == recipient && Content == content;
 
     /// <summary>
     /// Records the outcome of asking a provider to deliver this notification.

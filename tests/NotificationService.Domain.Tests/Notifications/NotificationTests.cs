@@ -202,6 +202,28 @@ public class NotificationTests
             notification.ScheduleRetryOrFail(RetryPolicy.Default, "All providers failed", Now));
     }
 
+    [Fact]
+    public void IsSameRequestAs_WithSameDetails_IsTrue()
+    {
+        var notification = TestNotifications.Sms();
+
+        notification.IsSameRequestAs(
+            CustomerId.Create("customer-1"),
+            Recipient.Sms(PhoneNumber.Create("+370 600 12345")),
+            NotificationContent.Create(null, "Your code is 123456")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void IsSameRequestAs_WithDifferentContent_IsFalse()
+    {
+        var notification = TestNotifications.Sms();
+
+        notification.IsSameRequestAs(
+            CustomerId.Create("customer-1"),
+            Recipient.Sms(PhoneNumber.Create("+37060012345")),
+            NotificationContent.Create(null, "Your code is 999999")).ShouldBeFalse();
+    }
+
     private static RetryPolicy RetryPolicyWithoutJitter(int maxDispatches) => new(
         maxDispatches,
         initialDelay: TimeSpan.FromMinutes(1),
