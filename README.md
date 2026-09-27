@@ -19,6 +19,22 @@ through configurable, prioritised providers with failover and retries.
 | **Retry** | A later dispatch, scheduled when a dispatch ended without delivery. |
 | **Delivery outcome** | `Delivered`, `TransientFailure` (another provider or a later retry may succeed) or `PermanentFailure` (no provider can deliver it, e.g. the address does not exist). |
 
+## Dispatching and failover
+
+A **dispatch** tries the eligible providers in priority order and stops at the first one that delivers:
+
+| Provider result | What happens |
+|---|---|
+| `Delivered` | Notification is `Delivered`; no other provider is called. |
+| `TransientFailure` | The next provider is tried. |
+| Exception thrown | Treated as a `TransientFailure` (only the exception type is stored; details go to the logs). |
+| No response within `DeliveryAttemptTimeout` | Treated as a `TransientFailure`; the call is cancelled. |
+| `PermanentFailure` | Notification is `Failed`; no other provider is called. |
+
+If every provider fails transiently, or none is eligible, a retry is scheduled (see below).
+Each retry starts again from the highest-priority provider, since the primary may have recovered.
+If the service is shutting down mid-dispatch, nothing is scheduled; the notification stays due and is picked up again.
+
 ## Retry strategy
 
 - A dispatch that ends without delivery (all eligible providers failed transiently, or none was eligible)
