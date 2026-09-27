@@ -128,4 +128,83 @@ public class NotificationTests
         Should.Throw<DomainException>(() =>
             notification.RecordDeliveryAttempt("Vonage", DeliveryOutcome.Delivered(), Now));
     }
+
+    [Fact]
+    public void IsDueAt_PendingNotification_IsDueFromNextAttemptAt()
+    {
+        var notification = TestNotifications.Sms();
+
+        notification.IsDueAt(Now.AddSeconds(-1)).ShouldBeFalse();
+        notification.IsDueAt(Now).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void IsDueAt_DeliveredNotification_IsNeverDue()
+    {
+        var notification = TestNotifications.Sms();
+        notification.RecordDeliveryAttempt("Twilio", DeliveryOutcome.Delivered(), Now);
+
+        notification.IsDueAt(Now.AddYears(1)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ScheduleRetryOrFail_WithRetriesLeft_SchedulesNextDispatch()
+    {
+        var notification = TestNotifications.Sms();
+        var retryPolicy = RetryPolicyWithoutJitter(maxDispatches: 3);
+        notification.RecordDeliveryAttempt("Twilio", DeliveryOutcome.TransientFailure("Timeout"), Now);
+
+        notification.ScheduleRetryOrFail(retryPolicy, "All providers failed", Now);
+
+        notification.Status.ShouldBe(NotificationStatus.Pending);
+        notification.FailedDispatchCount.ShouldBe(1);
+        notification.NextAttemptAt.ShouldBe(Now.AddMinutes(1));
+        notification.IsDueAt(Now).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ScheduleRetryOrFail_BacksOffOnEachFailedDispatch()
+    {
+        var notification = TestNotifications.Sms();
+        var retryPolicy = RetryPolicyWithoutJitter(maxDispatches: 5);
+
+        notification.ScheduleRetryOrFail(retryPolicy, "All providers failed", Now);
+        notification.ScheduleRetryOrFail(retryPolicy, "All providers failed", Now);
+        notification.ScheduleRetryOrFail(retryPolicy, "All providers failed", Now);
+
+        notification.FailedDispatchCount.ShouldBe(3);
+        notification.NextAttemptAt.ShouldBe(Now.AddMinutes(4));
+    }
+
+    [Fact]
+    public void ScheduleRetryOrFail_WhenRetriesExhausted_FailsNotification()
+    {
+        var notification = TestNotifications.Sms();
+        var retryPolicy = RetryPolicyWithoutJitter(maxDispatches: 2);
+
+        notification.ScheduleRetryOrFail(retryPolicy, "All providers failed", Now);
+        notification.ScheduleRetryOrFail(retryPolicy, "No provider available", Now.AddMinutes(1));
+
+        notification.Status.ShouldBe(NotificationStatus.Failed);
+        notification.FailedDispatchCount.ShouldBe(2);
+        notification.NextAttemptAt.ShouldBeNull();
+        notification.FailureReason.ShouldNotBeNull();
+        notification.FailureReason.ShouldContain("No provider available");
+    }
+
+    [Fact]
+    public void ScheduleRetryOrFail_WhenAlreadyDelivered_Throws()
+    {
+        var notification = TestNotifications.Sms();
+        notification.RecordDeliveryAttempt("Twilio", DeliveryOutcome.Delivered(), Now);
+
+        Should.Throw<DomainException>(() =>
+            notification.ScheduleRetryOrFail(RetryPolicy.Default, "All providers failed", Now));
+    }
+
+    private static RetryPolicy RetryPolicyWithoutJitter(int maxDispatches) => new(
+        maxDispatches,
+        initialDelay: TimeSpan.FromMinutes(1),
+        maxDelay: TimeSpan.FromHours(1),
+        jitterFactor: 0);
 }

@@ -48,9 +48,15 @@ public sealed class Notification
 
     public DateTimeOffset? DeliveredAt { get; private set; }
 
+    /// <summary>How many dispatches ended without any provider delivering the notification.</summary>
+    public int FailedDispatchCount { get; private set; }
+
     public string? FailureReason { get; private set; }
 
     public IReadOnlyList<DeliveryAttempt> DeliveryAttempts => _deliveryAttempts.AsReadOnly();
+
+    public bool IsDueAt(DateTimeOffset now) =>
+        Status == NotificationStatus.Pending && NextAttemptAt <= now;
 
     public static Notification Create(
         CustomerId customerId,
@@ -98,6 +104,29 @@ public sealed class Notification
 
             default:
                 throw new ArgumentOutOfRangeException(nameof(outcome), outcome.Kind, "Unknown delivery outcome.");
+        }
+    }
+
+    /// <summary>
+    /// Called when a dispatch ended without delivery: every eligible provider failed transiently,
+    /// or no provider was eligible. Schedules the next dispatch according to the retry policy,
+    /// or fails the notification once the policy allows no more dispatches.
+    /// </summary>
+    public void ScheduleRetryOrFail(RetryPolicy retryPolicy, string reason, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(retryPolicy);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        EnsurePending();
+
+        FailedDispatchCount++;
+
+        if (retryPolicy.AllowsRetryAfter(FailedDispatchCount))
+        {
+            NextAttemptAt = now + retryPolicy.DelayAfter(FailedDispatchCount);
+        }
+        else
+        {
+            Fail($"Gave up after {FailedDispatchCount} unsuccessful dispatches. Last reason: {reason}");
         }
     }
 

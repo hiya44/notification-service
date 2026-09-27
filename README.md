@@ -15,7 +15,17 @@ through configurable, prioritised providers with failover and retries.
 | **Content** | What the customer receives: a body and, for email, a subject. |
 | **Provider** | An external service that delivers notifications on one or more channels (e.g. Twilio, Amazon SES). |
 | **Delivery attempt** | One provider being asked to deliver a notification, and the outcome. |
+| **Dispatch** | One pass over the eligible providers for a notification, in priority order, until one delivers it. |
+| **Retry** | A later dispatch, scheduled when a dispatch ended without delivery. |
 | **Delivery outcome** | `Delivered`, `TransientFailure` (another provider or a later retry may succeed) or `PermanentFailure` (no provider can deliver it, e.g. the address does not exist). |
+
+## Retry strategy
+
+- A dispatch that ends without delivery (all eligible providers failed transiently, or none was eligible)
+  schedules the next dispatch using exponential backoff with jitter: about 1, 2, 4, 8, 16, 32 and 60 minutes.
+- Jitter (±20%) spreads out retries of notifications that failed together during a provider outage.
+- After 8 dispatches (about two hours) the notification is marked `Failed`.
+- A `PermanentFailure` (e.g. the address does not exist) fails the notification immediately, because retrying cannot help.
 
 ## Running locally
 
