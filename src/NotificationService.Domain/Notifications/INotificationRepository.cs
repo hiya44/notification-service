@@ -19,8 +19,9 @@ public interface INotificationRepository
     /// Claims up to <paramref name="maxCount"/> notifications that are due at <paramref name="now"/>, earliest first,
     /// so that no other dispatcher instance picks them up for <paramref name="leaseDuration"/>.
     /// If the claiming instance crashes, the lease expires and the notifications become claimable again.
+    /// Returns ids rather than aggregates, so each notification can be loaded, dispatched and saved as its own unit of work.
     /// </summary>
-    Task<IReadOnlyList<Notification>> ClaimDueAsync(
+    Task<IReadOnlyList<NotificationId>> ClaimDueAsync(
         DateTimeOffset now,
         int maxCount,
         TimeSpan leaseDuration,

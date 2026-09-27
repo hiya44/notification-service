@@ -30,7 +30,7 @@ public sealed class NotificationRepository(NotificationDbContext dbContext) : IN
     public Task<Notification?> FindByIdempotencyKeyAsync(IdempotencyKey idempotencyKey, CancellationToken cancellationToken) =>
         dbContext.Notifications.SingleOrDefaultAsync(n => n.IdempotencyKey == idempotencyKey, cancellationToken);
 
-    public async Task<IReadOnlyList<Notification>> ClaimDueAsync(
+    public async Task<IReadOnlyList<NotificationId>> ClaimDueAsync(
         DateTimeOffset now,
         int maxCount,
         TimeSpan leaseDuration,
@@ -41,36 +41,27 @@ public sealed class NotificationRepository(NotificationDbContext dbContext) : IN
         // One atomic statement: select due, unclaimed rows and claim them by setting a lease.
         // FOR UPDATE SKIP LOCKED lets concurrent instances claim different rows instead of waiting on each other.
         // Row locks last only for this statement; the lease is what protects the (slow) dispatch that follows.
+        // RETURNING has no guaranteed order, hence the CTE to return the earliest due first.
         var claimedIds = await dbContext.Database
             .SqlQuery<Guid>($"""
-                UPDATE notifications
-                SET locked_until = {lockedUntil}
-                WHERE id IN (
-                    SELECT id
-                    FROM notifications
-                    WHERE status = 'Pending'
-                      AND next_attempt_at <= {now}
-                      AND (locked_until IS NULL OR locked_until <= {now})
-                    ORDER BY next_attempt_at
-                    LIMIT {maxCount}
-                    FOR UPDATE SKIP LOCKED)
-                RETURNING id AS "Value"
+                WITH claimed AS (
+                    UPDATE notifications
+                    SET locked_until = {lockedUntil}
+                    WHERE id IN (
+                        SELECT id
+                        FROM notifications
+                        WHERE status = 'Pending'
+                          AND next_attempt_at <= {now}
+                          AND (locked_until IS NULL OR locked_until <= {now})
+                        ORDER BY next_attempt_at
+                        LIMIT {maxCount}
+                        FOR UPDATE SKIP LOCKED)
+                    RETURNING id, next_attempt_at)
+                SELECT id AS "Value" FROM claimed ORDER BY next_attempt_at
                 """)
             .ToListAsync(cancellationToken);
 
-        if (claimedIds.Count == 0)
-        {
-            return [];
-        }
-
-        // Loaded with LINQ rather than raw SQL so EF applies the configured column mapping
-        // (complex types and the xmin concurrency token). Translates to "WHERE id = ANY(@ids)".
-        var ids = claimedIds.Select(id => new NotificationId(id)).ToList();
-        var claimed = await dbContext.Notifications
-            .Where(n => ids.Contains(n.Id))
-            .ToListAsync(cancellationToken);
-
-        return claimed.OrderBy(n => n.NextAttemptAt).ToList();
+        return claimedIds.Select(id => new NotificationId(id)).ToList();
     }
 
     public async Task UpdateAsync(Notification notification, CancellationToken cancellationToken)

@@ -134,7 +134,7 @@ public sealed class NotificationRepositoryTests(PostgresFixture postgres) : ICla
 
         var claimed = await ClaimAsync(Now, maxCount: 10);
 
-        claimed.Select(n => n.Id).ShouldBe(new[] { dueEarlier.Id, dueLater.Id });
+        claimed.ShouldBe(new[] { dueEarlier.Id, dueLater.Id });
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public sealed class NotificationRepositoryTests(PostgresFixture postgres) : ICla
 
         (await ClaimAsync(Now, maxCount: 10)).ShouldHaveSingleItem();
         (await ClaimAsync(Now.AddMinutes(1), maxCount: 10)).ShouldBeEmpty();
-        (await ClaimAsync(Now + Lease, maxCount: 10)).ShouldHaveSingleItem().Id.ShouldBe(notification.Id);
+        (await ClaimAsync(Now + Lease, maxCount: 10)).ShouldHaveSingleItem().ShouldBe(notification.Id);
     }
 
     [Fact]
@@ -171,7 +171,8 @@ public sealed class NotificationRepositoryTests(PostgresFixture postgres) : ICla
         await using (var dbContext = postgres.CreateDbContext())
         {
             var repository = new NotificationRepository(dbContext);
-            var claimed = (await repository.ClaimDueAsync(Now, 10, Lease, CancellationToken)).ShouldHaveSingleItem();
+            var claimedId = (await repository.ClaimDueAsync(Now, 10, Lease, CancellationToken)).ShouldHaveSingleItem();
+            var claimed = (await repository.GetAsync(claimedId, CancellationToken)).ShouldNotBeNull();
             claimed.ScheduleRetryOrFail(retryPolicy, "All eligible providers failed.", Now);
             await repository.UpdateAsync(claimed, CancellationToken);
         }
@@ -190,7 +191,7 @@ public sealed class NotificationRepositoryTests(PostgresFixture postgres) : ICla
 
         var claims = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => ClaimAsync(Now, maxCount: 5)));
 
-        var claimedIds = claims.SelectMany(claim => claim).Select(n => n.Id).ToList();
+        var claimedIds = claims.SelectMany(claim => claim).ToList();
         claimedIds.Count.ShouldBe(20);
         claimedIds.Distinct().Count().ShouldBe(20);
     }
@@ -201,7 +202,7 @@ public sealed class NotificationRepositoryTests(PostgresFixture postgres) : ICla
         added.ShouldBeTrue();
     }
 
-    private Task<IReadOnlyList<Notification>> ClaimAsync(DateTimeOffset now, int maxCount) =>
+    private Task<IReadOnlyList<NotificationId>> ClaimAsync(DateTimeOffset now, int maxCount) =>
         WithRepository(repository => repository.ClaimDueAsync(now, maxCount, Lease, CancellationToken));
 
     private async Task<T> WithRepository<T>(Func<NotificationRepository, Task<T>> action)

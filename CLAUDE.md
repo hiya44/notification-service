@@ -40,7 +40,7 @@ src/
   NotificationService.Domain          aggregate, value objects, RetryPolicy, INotificationRepository (no dependencies)
   NotificationService.Application     use cases, provider port + selection, dispatcher, options
   NotificationService.Infrastructure  EF Core + PostgreSQL persistence; providers (simulated + SMTP) and AddNotificationProviders
-  NotificationService.Api             ASP.NET Core minimal API host (endpoints + worker in steps 8-9)
+  NotificationService.Api             ASP.NET Core host: DispatchWorker + AddDispatchWorker (step 8); endpoints in step 9
 tests/
   NotificationService.Domain.Tests
   NotificationService.Application.Tests   selection, failover, retry, use cases (fakes, FakeTimeProvider)
@@ -73,7 +73,8 @@ a background worker claims due notifications -> `NotificationDispatcher` tries e
   different request throws `IdempotencyKeyConflictException` (-> 409). A unique index settles races (`TryAddAsync` returns false).
 - **Persistence**: EF Core 10 + Npgsql. Recipient and content are EF complex types; delivery attempts are an owned collection.
   `locked_until` (lease) and `xmin` (optimistic concurrency, via `IsRowVersion`) are shadow properties, not in the domain.
-  `ClaimDueAsync` uses one `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING id`, then loads with LINQ.
+  `ClaimDueAsync` uses one `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING id` (in a CTE to order
+  earliest-first) and returns **ids only**; each notification is loaded separately (LINQ) in its own scope.
   `UpdateAsync` clears the lease and maps `DbUpdateConcurrencyException` to `ConcurrencyConflictException`.
   Repository methods save immediately (no separate unit of work).
 - **Assumption**: the caller sends the recipient's contact address; this service does not own customer data (`CustomerId` is for traceability).
@@ -81,6 +82,13 @@ a background worker claims due notifications -> `NotificationDispatcher` tries e
   (next to the routing settings; the `ProviderOptions` binder ignores the extra key). `NotificationOptionsValidator` lives in
   Application (needs only the provider port); `AddNotificationProviders(configuration)` in Infrastructure registers providers
   as singletons with `ValidateOnStart`. Not yet wired into `Program.cs` (step 9). SMTP: only 5xx `RecipientNotAccepted` is permanent.
+- **Worker (step 8)**: `DispatchWorker` (Api) claims a batch in a short scope, then dispatches all claimed ids **concurrently**
+  (`Task.WhenAll`), each in its own DI scope via `DispatchNotificationHandler` (Application: load -> re-check `IsDueAt` ->
+  dispatch -> `UpdateAsync`; logs and swallows `ConcurrencyConflictException`). Full batch -> claim again without waiting.
+  Per-notification exceptions are logged; the lease expires and it is retried. Poll failures are logged, worker stays alive.
+  `WorkerOptionsValidator`: lease > `DeliveryAttemptTimeout` x max enabled providers per channel. `AddNotificationApplication()`
+  (Application) registers selector/dispatcher as singletons and handlers as scoped. `DispatchWorker` is registered as itself too
+  so tests call `ProcessDueNotificationsAsync` (internal) directly. Not yet wired into `Program.cs` (step 9).
 - **At-least-once delivery**: a crash after a provider accepted a message but before saving can cause a duplicate send. Documented trade-off.
 
 ### Ubiquitous language
@@ -114,7 +122,7 @@ Notification, Channel (`Sms`, `Email`), Recipient, Content, Provider, Delivery a
 ## Status and remaining steps
 
 Done: 0 skeleton, 1 domain model, 2 retry policy, 3 provider selection, 4 dispatcher with failover, 5 send/query use cases with
-idempotency, 6 PostgreSQL persistence (+ fix: load claimed notifications via LINQ), 7 providers + startup validation.
+idempotency, 6 PostgreSQL persistence (+ fix: load claimed notifications via LINQ), 7 providers + startup validation, 8 dispatch worker.
 
 7. **Providers** (`feat(infra)`): simulated `Twilio` and `Vonage` (SMS) and `AmazonSes` (email) sharing a `SimulatedProvider`
    base with configurable behaviour (failure rate, latency, always-fail / permanent-failure modes) so failover can be demoed;

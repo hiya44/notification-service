@@ -1,10 +1,10 @@
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NotificationService.Application.Providers;
 using NotificationService.Domain.Notifications;
 using NotificationService.Infrastructure.Providers.Smtp;
+using NotificationService.IntegrationTests.Fakes;
 
 namespace NotificationService.IntegrationTests.Providers;
 
@@ -59,7 +59,7 @@ public sealed class SmtpEmailProviderTests(MailpitFixture mailpit) : IClassFixtu
     }
 
     private static SmtpEmailProvider CreateProvider(SmtpOptions options) =>
-        new(new StaticOptionsMonitor<SmtpOptions>(options), NullLogger<SmtpEmailProvider>.Instance);
+        new(new TestOptionsMonitor<SmtpOptions>(options), NullLogger<SmtpEmailProvider>.Instance);
 
     private static DeliveryRequest EmailTo(string address) => new(
         NotificationId.New(),
@@ -71,14 +71,5 @@ public sealed class SmtpEmailProviderTests(MailpitFixture mailpit) : IClassFixtu
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         return ((IPEndPoint)listener.LocalEndpoint).Port;
-    }
-
-    private sealed class StaticOptionsMonitor<TOptions>(TOptions value) : IOptionsMonitor<TOptions>
-    {
-        public TOptions CurrentValue => value;
-
-        public TOptions Get(string? name) => value;
-
-        public IDisposable? OnChange(Action<TOptions, string?> listener) => null;
     }
 }

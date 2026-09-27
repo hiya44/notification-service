@@ -1,3 +1,4 @@
+using NotificationService.Domain.Common;
 using NotificationService.Domain.Notifications;
 
 namespace NotificationService.Application.Tests.Fakes;
@@ -38,20 +39,36 @@ internal sealed class InMemoryNotificationRepository : INotificationRepository
     public Task<Notification?> FindByIdempotencyKeyAsync(IdempotencyKey idempotencyKey, CancellationToken cancellationToken) =>
         Task.FromResult(_notifications.SingleOrDefault(n => n.IdempotencyKey == idempotencyKey));
 
-    public Task<IReadOnlyList<Notification>> ClaimDueAsync(
+    /// <summary>Simulates another process having changed the notification: the next <see cref="UpdateAsync"/> throws.</summary>
+    public bool ConflictOnNextUpdate { get; set; }
+
+    public int UpdateCount { get; private set; }
+
+    public Task<IReadOnlyList<NotificationId>> ClaimDueAsync(
         DateTimeOffset now,
         int maxCount,
         TimeSpan leaseDuration,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<Notification> due = _notifications
+        IReadOnlyList<NotificationId> due = _notifications
             .Where(n => n.IsDueAt(now))
             .OrderBy(n => n.NextAttemptAt)
             .Take(maxCount)
+            .Select(n => n.Id)
             .ToList();
 
         return Task.FromResult(due);
     }
 
-    public Task UpdateAsync(Notification notification, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task UpdateAsync(Notification notification, CancellationToken cancellationToken)
+    {
+        if (ConflictOnNextUpdate)
+        {
+            ConflictOnNextUpdate = false;
+            throw new ConcurrencyConflictException($"Notification {notification.Id} was changed by another process.");
+        }
+
+        UpdateCount++;
+        return Task.CompletedTask;
+    }
 }

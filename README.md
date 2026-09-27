@@ -48,6 +48,33 @@ If every provider fails transiently, or none is eligible, a retry is scheduled (
 Each retry starts again from the highest-priority provider, since the primary may have recovered.
 If the service is shutting down mid-dispatch, nothing is scheduled; the notification stays due and is picked up again.
 
+## Dispatch worker
+
+A background service (`DispatchWorker`) delivers accepted notifications:
+
+1. Every `PollingInterval` (default 5 s) it **claims** up to `BatchSize` (default 20) due notifications, setting a lease of `LeaseDuration` (default 2 min).
+2. It **dispatches the batch concurrently**, each notification in its **own DI scope**: load, dispatch, save. Its own database context means
+   one failed save cannot leave dirty state that breaks the others, and one failing notification never stops the batch
+   (it keeps its lease and is picked up again when the lease expires).
+3. If the batch was full, it claims the next one straight away instead of waiting, so a backlog (e.g. after an outage) drains quickly.
+
+Settings are in `Notifications:Worker` and validated at startup, including that **the lease outlasts the longest possible dispatch**
+(`DeliveryAttemptTimeout` × enabled providers for a channel). Otherwise another instance could dispatch a notification that is
+still being worked on. This is also why the batch is dispatched concurrently: a lease sized for one dispatch would not cover
+a whole batch dispatched one after another.
+
+**Several instances.** Claiming uses `FOR UPDATE SKIP LOCKED` (see Persistence), so instances share the work without coordination.
+The handler re-checks that a notification is still due after loading it, and optimistic concurrency rejects the save if another
+instance processed it after our lease expired; that result wins and ours is discarded (logged).
+
+**Shutdown.** Cancellation stops in-flight dispatches without saving; their leases expire and the notifications are dispatched again.
+If a provider had already accepted one, the customer may get it twice: delivery is *at least once*.
+
+**Trade-offs.** Polling adds up to `PollingInterval` of latency and a cheap query per interval (served by a partial index); a message broker or
+PostgreSQL `LISTEN/NOTIFY` would react immediately but add infrastructure. A notification that fails *unexpectedly* every time
+(e.g. a bug) is retried at every lease expiry without counting towards its retry limit; a per-notification claim counter
+with a dead-letter status would be the next step.
+
 ## Retry strategy
 
 - A dispatch that ends without delivery (all eligible providers failed transiently, or none was eligible)
@@ -117,6 +144,7 @@ and `delivery_attempts` (an owned collection).
 - **Claiming work across instances.** The dispatch worker claims due notifications with a single statement:
   `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING id`.
   `SKIP LOCKED` lets several instances claim different rows at the same time without blocking each other.
+  Claiming returns only ids; each notification is then loaded, dispatched and saved as its own unit of work.
 - **Leases instead of long transactions.** Claiming sets `locked_until`. The row locks are released immediately,
   so no transaction stays open while providers are called. If an instance crashes, its lease expires and another instance takes over.
 - **Optimistic concurrency.** PostgreSQL's `xmin` system column is the concurrency token. If a lease expired and
