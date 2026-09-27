@@ -1,16 +1,17 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/NotificationService.Domain/NotificationService.Domain.csproj" />
-    <Project Path="src/NotificationService.Application/NotificationService.Application.csproj" />
-    <Project Path="src/NotificationService.Infrastructure/NotificationService.Infrastructure.csproj" />
     <Project Path="src/NotificationService.Api/NotificationService.Api.csproj" />
+    <Project Path="src/NotificationService.Application/NotificationService.Application.csproj" />
+    <Project Path="src/NotificationService.Domain/NotificationService.Domain.csproj" />
+    <Project Path="src/NotificationService.Infrastructure/NotificationService.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/NotificationService.Domain.Tests/NotificationService.Domain.Tests.csproj" />
     <Project Path="tests/NotificationService.Application.Tests/NotificationService.Application.Tests.csproj" />
+    <Project Path="tests/NotificationService.Domain.Tests/NotificationService.Domain.Tests.csproj" />
     <Project Path="tests/NotificationService.IntegrationTests/NotificationService.IntegrationTests.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />
     <File Path="docker-compose.yml" />

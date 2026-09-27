@@ -74,6 +74,29 @@ Providers are configured in the `Notifications:Providers` section, keyed by prov
 - A provider implementation without a configuration entry is never used, so adding code alone does not route traffic to it.
 - Configuration is read on every dispatch, so disabling or re-prioritising a provider does not need a restart.
 
+## Persistence
+
+PostgreSQL through EF Core. Two tables: `notifications` (the aggregate, with recipient and content as complex types)
+and `delivery_attempts` (an owned collection).
+
+- **Claiming work across instances.** The dispatch worker claims due notifications with a single statement:
+  `UPDATE ... WHERE id IN (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING id`.
+  `SKIP LOCKED` lets several instances claim different rows at the same time without blocking each other.
+- **Leases instead of long transactions.** Claiming sets `locked_until`. The row locks are released immediately,
+  so no transaction stays open while providers are called. If an instance crashes, its lease expires and another instance takes over.
+- **Optimistic concurrency.** PostgreSQL's `xmin` system column is the concurrency token. If a lease expired and
+  another instance processed the notification meanwhile, the slower instance's save fails instead of overwriting.
+- **Persistence details stay out of the domain.** `locked_until` and `xmin` are EF shadow properties; the only concession
+  in the domain model is a private parameterless constructor for materialization.
+- A partial index on `next_attempt_at WHERE status = 'Pending'` keeps polling cheap as delivered notifications accumulate.
+
+### Migrations
+
+```bash
+dotnet tool restore
+dotnet ef migrations add <Name> --project src/NotificationService.Infrastructure --startup-project src/NotificationService.Api --output-dir Persistence/Migrations
+```
+
 ## Running locally
 
 ```bash

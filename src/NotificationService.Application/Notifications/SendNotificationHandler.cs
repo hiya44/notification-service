@@ -8,6 +8,7 @@ namespace NotificationService.Application.Notifications;
 /// </summary>
 public sealed class SendNotificationHandler(INotificationRepository repository, TimeProvider timeProvider)
 {
+    /// <exception cref="Domain.Common.DomainException">The request is invalid.</exception>
     /// <exception cref="IdempotencyKeyConflictException">The idempotency key was used for a different request.</exception>
     public async Task<SendNotificationResult> HandleAsync(SendNotificationCommand command, CancellationToken cancellationToken)
     {

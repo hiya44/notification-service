@@ -14,4 +14,21 @@ public interface INotificationRepository
     Task<Notification?> GetAsync(NotificationId id, CancellationToken cancellationToken);
 
     Task<Notification?> FindByIdempotencyKeyAsync(IdempotencyKey idempotencyKey, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Claims up to <paramref name="maxCount"/> notifications that are due at <paramref name="now"/>, earliest first,
+    /// so that no other dispatcher instance picks them up for <paramref name="leaseDuration"/>.
+    /// If the claiming instance crashes, the lease expires and the notifications become claimable again.
+    /// </summary>
+    Task<IReadOnlyList<Notification>> ClaimDueAsync(
+        DateTimeOffset now,
+        int maxCount,
+        TimeSpan leaseDuration,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Saves changes to a notification loaded through this repository and releases its claim.
+    /// </summary>
+    /// <exception cref="Common.ConcurrencyConflictException">Another process changed the notification in the meantime.</exception>
+    Task UpdateAsync(Notification notification, CancellationToken cancellationToken);
 }

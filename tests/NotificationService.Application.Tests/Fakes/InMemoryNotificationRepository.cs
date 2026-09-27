@@ -37,4 +37,21 @@ internal sealed class InMemoryNotificationRepository : INotificationRepository
 
     public Task<Notification?> FindByIdempotencyKeyAsync(IdempotencyKey idempotencyKey, CancellationToken cancellationToken) =>
         Task.FromResult(_notifications.SingleOrDefault(n => n.IdempotencyKey == idempotencyKey));
+
+    public Task<IReadOnlyList<Notification>> ClaimDueAsync(
+        DateTimeOffset now,
+        int maxCount,
+        TimeSpan leaseDuration,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<Notification> due = _notifications
+            .Where(n => n.IsDueAt(now))
+            .OrderBy(n => n.NextAttemptAt)
+            .Take(maxCount)
+            .ToList();
+
+        return Task.FromResult(due);
+    }
+
+    public Task UpdateAsync(Notification notification, CancellationToken cancellationToken) => Task.CompletedTask;
 }

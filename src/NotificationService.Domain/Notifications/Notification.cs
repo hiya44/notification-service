@@ -13,6 +13,13 @@ public sealed class Notification
 
     private readonly List<DeliveryAttempt> _deliveryAttempts = [];
 
+    // Used by EF Core to materialize notifications from the database; properties are set through backing fields.
+#pragma warning disable CS8618
+    private Notification()
+    {
+    }
+#pragma warning restore CS8618
+
     private Notification(
         NotificationId id,
         CustomerId customerId,
