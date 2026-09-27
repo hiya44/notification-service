@@ -8,6 +8,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/NotificationService.Application.Tests/NotificationService.Application.Tests.csproj" />
     <Project Path="tests/NotificationService.Domain.Tests/NotificationService.Domain.Tests.csproj" />
+    <Project Path="tests/NotificationService.Infrastructure.Tests/NotificationService.Infrastructure.Tests.csproj" />
     <Project Path="tests/NotificationService.IntegrationTests/NotificationService.IntegrationTests.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">

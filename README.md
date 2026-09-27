@@ -63,9 +63,12 @@ Providers are configured in the `Notifications:Providers` section, keyed by prov
 ```json
 "Notifications": {
   "Providers": {
-    "Twilio":    { "Enabled": true, "Priority": 1, "Channels": [ "Sms" ] },
-    "Vonage":    { "Enabled": true, "Priority": 2, "Channels": [ "Sms" ] }
-  }
+    "Twilio":    { "Enabled": true, "Priority": 1, "Channels": [ "Sms" ], "Simulation": { "FailureRate": 0.2 } },
+    "Vonage":    { "Enabled": true, "Priority": 2, "Channels": [ "Sms" ] },
+    "Smtp":      { "Enabled": true, "Priority": 1, "Channels": [ "Email" ] },
+    "AmazonSes": { "Enabled": true, "Priority": 2, "Channels": [ "Email" ], "Simulation": { "Mode": "AlwaysFail" } }
+  },
+  "Smtp": { "Host": "localhost", "Port": 1025, "FromAddress": "notifications@example.com" }
 }
 ```
 
@@ -73,6 +76,38 @@ Providers are configured in the `Notifications:Providers` section, keyed by prov
 - Eligible providers are tried in ascending `Priority` (1 first); equal priorities are ordered by name.
 - A provider implementation without a configuration entry is never used, so adding code alone does not route traffic to it.
 - Configuration is read on every dispatch, so disabling or re-prioritising a provider does not need a restart.
+- **Validated at startup** (`ValidateOnStart`): an unknown provider name (e.g. a typo), a channel the provider cannot deliver on,
+  a priority below 1, an enabled provider without channels, or invalid simulation/SMTP settings stop the application
+  with a clear message instead of silently leaving notifications undelivered. Equal priorities are allowed (ordered by name).
+  Having no enabled provider for a channel is allowed on purpose: it is how an operator pauses a channel, and notifications wait for retries.
+
+## Providers
+
+| Provider | Channel | Implementation |
+|---|---|---|
+| `Smtp` | Email | Real: sends through an SMTP server with MailKit. Locally this is Mailpit; open http://localhost:8025 to see sent mail. |
+| `AmazonSes` | Email | Simulated |
+| `Twilio` | SMS | Simulated |
+| `Vonage` | SMS | Simulated |
+
+**Why simulated providers.** Real Twilio, Vonage and SES integrations need accounts and credentials, and add nothing to the design
+beyond an HTTP call. The simulated providers implement the same `INotificationProvider` port, so replacing one with a real HTTP client
+changes no other code. They share a `SimulatedProvider` base whose behaviour is configured per provider under `Simulation`
+(re-read on every attempt, so an outage can be switched on at runtime to demonstrate failover):
+
+| Setting | Effect |
+|---|---|
+| `Mode: Normal` (default) | Delivers, except a random `FailureRate` share (0 to 1, default 0) of attempts that fail transiently. |
+| `Mode: AlwaysFail` | Every attempt fails transiently, like an outage: the next provider is tried, then retries are scheduled. |
+| `Mode: PermanentFailure` | Every attempt fails permanently, like a non-existent address: the notification fails immediately. |
+| `Latency` (default `00:00:00.1`) | How long each attempt takes. Set it above `DeliveryAttemptTimeout` to simulate a hanging provider. |
+
+**SMTP error classification.** Only a 5xx rejection of the *recipient* (e.g. `550 mailbox unavailable`) is a `PermanentFailure`,
+because no provider can deliver to that address. 4xx responses, a rejected sender or message, connection, TLS and authentication
+errors are `TransientFailure`s: they are problems with this server or its configuration, so another provider or a later retry may succeed.
+The server's response text is logged by status code only, because it often echoes the recipient's address.
+Each email carries an `X-Notification-Id` header and its `Message-ID` is stored as the provider message id, for tracing.
+A new SMTP connection is opened per message; a connection pool would be the next step at higher volume.
 
 ## Persistence
 
@@ -102,6 +137,6 @@ dotnet ef migrations add <Name> --project src/NotificationService.Infrastructure
 ```bash
 docker compose up -d          # PostgreSQL + Mailpit (http://localhost:8025)
 dotnet build
-dotnet test
+dotnet test                   # needs Docker: integration tests start PostgreSQL and Mailpit with Testcontainers
 dotnet run --project src/NotificationService.Api
 ```

@@ -63,9 +63,11 @@ public sealed class NotificationRepository(NotificationDbContext dbContext) : IN
             return [];
         }
 
-        // xmin is a system column and not included in "*", but EF needs it as the concurrency token.
+        // Loaded with LINQ rather than raw SQL so EF applies the configured column mapping
+        // (complex types and the xmin concurrency token). Translates to "WHERE id = ANY(@ids)".
+        var ids = claimedIds.Select(id => new NotificationId(id)).ToList();
         var claimed = await dbContext.Notifications
-            .FromSql($"SELECT *, xmin FROM notifications WHERE id = ANY({claimedIds.ToArray()})")
+            .Where(n => ids.Contains(n.Id))
             .ToListAsync(cancellationToken);
 
         return claimed.OrderBy(n => n.NextAttemptAt).ToList();
