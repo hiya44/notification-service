@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build*)",
+      "Bash(dotnet test*)",
+      "Bash(dotnet format*)",
+      "Bash(dotnet restore*)",
+      "Bash(dotnet tool restore*)",
+      "Bash(docker compose ps*)",
+      "Bash(docker compose up*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "PowerShell(dotnet build*)",
+      "PowerShell(dotnet test*)",
+      "PowerShell(dotnet format*)",
+      "PowerShell(dotnet restore*)",
+      "PowerShell(dotnet tool restore*)",
+      "PowerShell(docker compose ps*)",
+      "PowerShell(docker compose up*)",
+      "PowerShell(git status*)",
+      "PowerShell(git diff*)",
+      "PowerShell(git log*)",
+      "PowerShell(git show*)"
+    ],
+    "deny": [
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(git reset*)",
+      "Bash(git checkout -- *)",
+      "Bash(git checkout .*)",
+      "Bash(git restore*)",
+      "Bash(git clean*)",
+      "Bash(git stash*)",
+      "Bash(git rebase*)",
+      "Bash(git merge*)",
+      "Bash(git cherry-pick*)",
+      "Bash(git revert*)",
+      "Bash(git rm*)",
+      "Bash(git branch -D*)",
+      "PowerShell(git commit*)",
+      "PowerShell(git push*)",
+      "PowerShell(git reset*)",
+      "PowerShell(git checkout -- *)",
+      "PowerShell(git checkout .*)",
+      "PowerShell(git restore*)",
+      "PowerShell(git clean*)",
+      "PowerShell(git stash*)",
+      "PowerShell(git rebase*)",
+      "PowerShell(git merge*)",
+      "PowerShell(git cherry-pick*)",
+      "PowerShell(git revert*)",
+      "PowerShell(git rm*)",
+      "PowerShell(git branch -D*)",
+      "Edit(**/Persistence/Migrations/**)",
+      "Read(**/.env)",
+      "Read(**/appsettings.*.local.json)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "\"$(command -v pwsh || echo powershell)\" -NoProfile -ExecutionPolicy Bypass -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-personal-data.ps1\"",
+            "timeout": 30,
+            "statusMessage": "Checking for personal data in messages and logs"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "\"$(command -v pwsh || echo powershell)\" -NoProfile -ExecutionPolicy Bypass -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/format-csharp.ps1\"",
+            "timeout": 60,
+            "statusMessage": "Formatting C#"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "\"$(command -v pwsh || echo powershell)\" -NoProfile -ExecutionPolicy Bypass -File \"$CLAUDE_PROJECT_DIR/.claude/hooks/verify.ps1\"",
+            "timeout": 600,
+            "statusMessage": "Verifying build and unit tests"
+          }
+        ]
+      }
+    ]
+  }
+}

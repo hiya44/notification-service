@@ -19,3 +19,8 @@ coverage*/
 # Local settings
 appsettings.*.local.json
 .env
+
+# Claude Code: personal, not shared
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/hooks/.last-verified
