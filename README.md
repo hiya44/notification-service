@@ -32,6 +32,33 @@ This keeps callers independent of provider latency and outages, and means an acc
 - Two concurrent requests with the same key: a unique index decides the winner; the other request returns the winner's notification.
 - Assumption: keys are unique across all calling services (e.g. GUIDs or `<service>:<business id>`). With authentication in place, keys would be scoped per caller.
 
+## API
+
+| Request | Responses |
+|---|---|
+| `POST /notifications` with optional `Idempotency-Key` header | `202 Accepted` + `Location` for a new notification; `200 OK` when the idempotency key was already used for the same request; `400` for an invalid request; `409` when the key was used for a different request |
+| `GET /notifications/{id}` | `200 OK` with status and delivery attempts; `404` if unknown |
+| `GET /health/live`, `GET /health/ready` | Liveness (process is up) and readiness (database reachable) |
+
+```http
+POST /notifications
+Idempotency-Key: order-42-shipped
+Content-Type: application/json
+
+{ "customerId": "c-1", "channel": "Email", "recipient": "jane@example.com",
+  "subject": "Your order has shipped", "body": "It will arrive tomorrow." }
+```
+
+- **202 rather than 201:** the notification is accepted, not yet delivered. The `Location` header is where the caller follows its progress.
+- **Errors are RFC 9457 problem details.** Validation stays in the domain: value objects throw a `DomainException`, and one exception
+  handler maps it to 400 (messages never contain personal data, so they are safe to return), and an idempotency conflict to 409.
+  Unreadable JSON is a 400 that names the offending field without echoing its value. Anything unexpected is a 500 without internals.
+- **Enums are strings** (`"Sms"`, `"Delivered"`); numbers are rejected, so a typo cannot silently select a different channel.
+- **Separate API contracts** (`SendNotificationRequest`, `NotificationResponse`) keep the HTTP shape independent of the application's read model.
+- **OpenAPI and Scalar are only exposed in Development**, like the automatic database migration on startup. In production, migrations
+  would run as a deployment step (e.g. an EF migration bundle) so instances starting together do not race and the app needs no DDL permissions.
+- Not included, by scope: authentication, rate limiting, and listing/searching notifications.
+
 ## Dispatching and failover
 
 A **dispatch** tries the eligible providers in priority order and stops at the first one that delivers:
@@ -168,3 +195,22 @@ dotnet build
 dotnet test                   # needs Docker: integration tests start PostgreSQL and Mailpit with Testcontainers
 dotnet run --project src/NotificationService.Api
 ```
+
+The API listens on http://localhost:5080; the database schema is created on startup (Development only).
+
+- API reference and a UI to try requests: http://localhost:5080/scalar
+- Ready-made demo requests (send, idempotency, errors, health): `src/NotificationService.Api/NotificationService.Api.http`,
+  runnable from Visual Studio, Rider or VS Code (REST Client)
+- Sent emails: http://localhost:8025 (Mailpit)
+
+**Demo.** Development settings (`appsettings.Development.json`) make Twilio fail 30% of attempts and shorten retry delays to seconds,
+so sending a few SMS shows failover to Vonage in the delivery attempts:
+
+```bash
+curl -i -X POST http://localhost:5080/notifications -H "Content-Type: application/json" \
+  -d '{"customerId":"c-1","channel":"Sms","recipient":"+37060012345","body":"Your code is 123456"}'
+curl http://localhost:5080/notifications/<id from the response>
+```
+
+Provider configuration is reloaded while the app runs. Set `"Simulation": { "Mode": "AlwaysFail" }` on both SMS providers in
+`appsettings.Development.json` to see retries being scheduled, or `"Enabled": false` on `Smtp` to send email through `AmazonSes`.

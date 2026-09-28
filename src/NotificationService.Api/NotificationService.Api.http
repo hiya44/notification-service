@@ -1,0 +1,118 @@
+# Demo requests for the Notification Service.
+# Start the app first (docker compose up -d, then run the "http" profile), then click "Send request" above a request.
+# Requests are separated by ###. Named requests (# @name) can be referenced by later ones, e.g. {{sendSms.response.body.$.id}}.
+
+@host = http://localhost:5080
+
+# Idempotency keys are stored permanently: change this value to start the idempotency demo (requests 3-5) from scratch.
+@idempotencyKey = order-42-shipped-1
+
+### 1. Send an SMS -> 202 Accepted with a Location header
+# @name sendSms
+POST {{host}}/notifications
+Content-Type: application/json
+
+{
+  "customerId": "customer-1",
+  "channel": "Sms",
+  "recipient": "+37060012345",
+  "body": "Your verification code is 123456"
+}
+
+### 2. Get the SMS: status and delivery attempts (send it a few times; Twilio fails ~30% in Development, then Vonage delivers)
+GET {{host}}/notifications/{{sendSms.response.body.$.id}}
+
+### 3. Send an email with an idempotency key -> 202 Accepted (the email appears in Mailpit: http://localhost:8025)
+# @name sendEmail
+POST {{host}}/notifications
+Content-Type: application/json
+Idempotency-Key: {{idempotencyKey}}
+
+{
+  "customerId": "customer-1",
+  "channel": "Email",
+  "recipient": "jane@example.com",
+  "subject": "Your order has shipped",
+  "body": "Your order #42 will arrive tomorrow."
+}
+
+### 4. Repeat exactly the same request -> 200 OK with the same id, nothing new is created
+POST {{host}}/notifications
+Content-Type: application/json
+Idempotency-Key: {{idempotencyKey}}
+
+{
+  "customerId": "customer-1",
+  "channel": "Email",
+  "recipient": "jane@example.com",
+  "subject": "Your order has shipped",
+  "body": "Your order #42 will arrive tomorrow."
+}
+
+### 5. Same idempotency key, different body -> 409 Conflict
+POST {{host}}/notifications
+Content-Type: application/json
+Idempotency-Key: {{idempotencyKey}}
+
+{
+  "customerId": "customer-1",
+  "channel": "Email",
+  "recipient": "jane@example.com",
+  "subject": "Your order has shipped",
+  "body": "A different message."
+}
+
+### 6. Get the email
+GET {{host}}/notifications/{{sendEmail.response.body.$.id}}
+
+### 7. Invalid phone number -> 400 problem details from the domain
+POST {{host}}/notifications
+Content-Type: application/json
+
+{
+  "customerId": "customer-1",
+  "channel": "Sms",
+  "recipient": "12345",
+  "body": "Hello"
+}
+
+### 8. Email without a subject -> 400
+POST {{host}}/notifications
+Content-Type: application/json
+
+{
+  "customerId": "customer-1",
+  "channel": "Email",
+  "recipient": "jane@example.com",
+  "body": "Hello"
+}
+
+### 9. Missing channel -> 400 validation problem
+POST {{host}}/notifications
+Content-Type: application/json
+
+{
+  "customerId": "customer-1",
+  "recipient": "+37060012345",
+  "body": "Hello"
+}
+
+### 10. Unknown channel -> 400 naming the field, without echoing the value
+POST {{host}}/notifications
+Content-Type: application/json
+
+{
+  "customerId": "customer-1",
+  "channel": "Pigeon",
+  "recipient": "+37060012345",
+  "body": "Hello"
+}
+
+### 11. Unknown notification -> 404
+GET {{host}}/notifications/00000000-0000-0000-0000-000000000001
+
+### 12. Liveness: the process is up
+GET {{host}}/health/live
+
+### 13. Readiness: the database is reachable
+GET {{host}}/health/ready

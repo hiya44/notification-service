@@ -40,7 +40,7 @@ src/
   NotificationService.Domain          aggregate, value objects, RetryPolicy, INotificationRepository (no dependencies)
   NotificationService.Application     use cases, provider port + selection, dispatcher, options
   NotificationService.Infrastructure  EF Core + PostgreSQL persistence; providers (simulated + SMTP) and AddNotificationProviders
-  NotificationService.Api             ASP.NET Core host: DispatchWorker + AddDispatchWorker (step 8); endpoints in step 9
+  NotificationService.Api             ASP.NET Core host: endpoints, ApiExceptionHandler, DispatchWorker, Program.cs DI wiring
 tests/
   NotificationService.Domain.Tests
   NotificationService.Application.Tests   selection, failover, retry, use cases (fakes, FakeTimeProvider)
@@ -81,14 +81,20 @@ a background worker claims due notifications -> `NotificationDispatcher` tries e
 - **Providers (step 7)**: simulated settings are named options bound from `Notifications:Providers:{Name}:Simulation`
   (next to the routing settings; the `ProviderOptions` binder ignores the extra key). `NotificationOptionsValidator` lives in
   Application (needs only the provider port); `AddNotificationProviders(configuration)` in Infrastructure registers providers
-  as singletons with `ValidateOnStart`. Not yet wired into `Program.cs` (step 9). SMTP: only 5xx `RecipientNotAccepted` is permanent.
+  as singletons with `ValidateOnStart`. SMTP: only 5xx `RecipientNotAccepted` is permanent.
 - **Worker (step 8)**: `DispatchWorker` (Api) claims a batch in a short scope, then dispatches all claimed ids **concurrently**
   (`Task.WhenAll`), each in its own DI scope via `DispatchNotificationHandler` (Application: load -> re-check `IsDueAt` ->
   dispatch -> `UpdateAsync`; logs and swallows `ConcurrencyConflictException`). Full batch -> claim again without waiting.
   Per-notification exceptions are logged; the lease expires and it is retried. Poll failures are logged, worker stays alive.
   `WorkerOptionsValidator`: lease > `DeliveryAttemptTimeout` x max enabled providers per channel. `AddNotificationApplication()`
   (Application) registers selector/dispatcher as singletons and handlers as scoped. `DispatchWorker` is registered as itself too
-  so tests call `ProcessDueNotificationsAsync` (internal) directly. Not yet wired into `Program.cs` (step 9).
+  so tests call `ProcessDueNotificationsAsync` (internal) directly.
+- **API (step 9)**: minimal API endpoints in `Api/Notifications` with separate contracts (`SendNotificationRequest` with nullable
+  `Channel`, `NotificationResponse`). POST -> 202 + `Location` (named route `GetNotification`) or 200 for a duplicate.
+  `ApiExceptionHandler` (IExceptionHandler) maps `DomainException` -> 400, `IdempotencyKeyConflictException` -> 409,
+  `BadHttpRequestException` -> 400 naming only the JSON path. Enums as strings, `allowIntegerValues: false`.
+  `/health/live` (no checks) and `/health/ready` (DbContext check). OpenAPI + Scalar and `MigrateAsync` only in Development.
+  `appsettings.Development.json` makes Twilio fail 30% and shortens retries for the demo; config hot-reload verified manually.
 - **At-least-once delivery**: a crash after a provider accepted a message but before saving can cause a duplicate send. Documented trade-off.
 
 ### Ubiquitous language
@@ -117,12 +123,16 @@ Notification, Channel (`Sms`, `Email`), Recipient, Content, Provider, Delivery a
   Load entities with LINQ, not raw SQL.
 - Testcontainers: use `new PostgreSqlBuilder("postgres:17-alpine")` (the parameterless constructor is obsolete) and
   `Testcontainers.PostgreSql` >= 4.15.0 (older versions pull a vulnerable SSH.NET).
+- `Microsoft.AspNetCore.OpenApi` 10.0.x allows the vulnerable `Microsoft.OpenApi` 2.0.0 (GHSA-v5pm-xwqc-g5wc); it is pinned
+  to a patched 2.x with an explicit `PackageReference` in the Api project.
+- In Development, minimal APIs throw `BadHttpRequestException` for unreadable JSON; without mapping it in `ApiExceptionHandler`,
+  `UseExceptionHandler` turns it into a 500.
 - The generated migration shows an `xmin` column with `rowVersion: true`; Npgsql does not create it (system column). That is expected.
 
 ## Status and remaining steps
 
 Done: 0 skeleton, 1 domain model, 2 retry policy, 3 provider selection, 4 dispatcher with failover, 5 send/query use cases with
-idempotency, 6 PostgreSQL persistence (+ fix: load claimed notifications via LINQ), 7 providers + startup validation, 8 dispatch worker.
+idempotency, 6 PostgreSQL persistence (+ fix: load claimed notifications via LINQ), 7 providers + startup validation, 8 dispatch worker, 9 REST API.
 
 7. **Providers** (`feat(infra)`): simulated `Twilio` and `Vonage` (SMS) and `AmazonSes` (email) sharing a `SimulatedProvider`
    base with configurable behaviour (failure rate, latency, always-fail / permanent-failure modes) so failover can be demoed;
