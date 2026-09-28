@@ -353,6 +353,8 @@ Instructions are treated as maintained project infrastructure, reviewed like cod
 | Decision records | `docs/adr/` | *Why* the design is the way it is, so changes do not undo decisions unknowingly |
 | Guardrails | `.claude/settings.json` | Permissions: the AI can build, test and read history, but cannot commit, push, discard changes, edit migrations or read local secrets |
 | Automated checks | `.claude/hooks/` | Blocks personal data in exception messages and log templates; formats edited C# files; builds and runs unit tests before handing work back |
+| Workflows | `.claude/skills/` | Repeatable procedures: `/add-provider`, `/add-channel`, `/new-migration`, `/finish-step` (verify, check docs, report), `/demo` |
+| Reviewers | `.claude/agents/` | Read-only subagents that review a change for personal-data leaks, architecture and DDD rules, and test coverage |
 | Personal context | `CLAUDE.local.md` (not committed) | Each developer's own machine and editor notes |
 
 The principle: **rules that matter are enforced by tools, not only written down.** "The developer reviews every commit" is a
@@ -375,7 +377,7 @@ on their machine, and fixed or redirected the AI where needed.
 | Planning and steps 0–6 (skeleton to persistence) | Claude in the Claude desktop app (Cowork mode), configured for Claude Opus 5.5 | Analysed the task and proposed the architecture, domain model, test plan and a 12-step build plan; wrote the code, tests, README sections and `CLAUDE.md`. It could not build or run anything in its environment, so every build, test and migration ran on the developer's machine. |
 | Steps 7–11 (providers to documentation) | Claude Code (CLI) with Claude Opus 5.5 | Wrote the providers, dispatch worker, API and end-to-end tests, and ran `dotnet build`, `dotnet test` and the application itself before handing each step over. It also looked up package versions and security advisories. |
 
-| After the task | Claude Code with Claude Opus 5.5 | At the developer's request, planned how to prepare the repository for ongoing AI-assisted work, then restructured `CLAUDE.md` into layer guides, wrote the decision records, and added the permission rules and hooks (each hook tested with sample input before being enabled). |
+| After the task | Claude Code with Claude Opus 5.5 | At the developer's request, planned how to prepare the repository for ongoing AI-assisted work, then restructured `CLAUDE.md` into layer guides, wrote the decision records, and added the permission rules and hooks (each hook tested with sample input before being enabled), workflow skills and reviewer subagents. The developer shaped the result, e.g. dropping an interview-specific section from `/finish-step`. |
 
 `CLAUDE.md` (in the repository) carried the context between the two tools: the decisions made so far, conventions, known pitfalls,
 the remaining steps, and the working rules, including that the AI must never commit or discard changes.

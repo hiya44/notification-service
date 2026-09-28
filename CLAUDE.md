@@ -89,11 +89,18 @@ Definitions are in the README.
 - Logging with `[LoggerMessage]` source-generated methods.
 - Match the surrounding code: comment density, naming, and idioms. Comments explain *why*, not what.
 
-## Common changes
+## Workflows
 
-- **Add a provider:** implement `INotificationProvider` in Infrastructure (a subclass of `SimulatedProvider` for a simulated one),
-  register it in `AddNotificationProviders`, add its entry to `appsettings.json`, add tests, and add it to the README's provider table.
-  Classify its errors: only a recipient-level problem is a `PermanentFailure`.
-- **Add a channel:** a `Channel` value, recipient validation in `Recipient.Create`, content rules in `Notification`, API contract,
-  providers that support it, tests at every level, README (glossary, API, providers).
-- **Change the schema:** change the EF configuration, then generate a migration with the command above and review it.
+Skills in `.claude/skills/` hold the step-by-step checklists for recurring work; use them rather than improvising:
+
+| Skill | Use it to |
+|---|---|
+| `/add-provider <Name> <Sms\|Email> [simulated\|real]` | Add a provider: class, registration, configuration, the registration test, the end-to-end fake, tests, README |
+| `/add-channel <Name>` | Add a channel across every layer, after agreeing on address format, content rules and providers |
+| `/new-migration <Name>` | Generate an EF migration and review it for unintended changes and data loss |
+| `/finish-step` | Wrap up any change: check the diff, run the right tests, check the docs, report with a suggested commit message |
+| `/demo` | Start the service and run the demo scenarios (only when the developer asks) |
+
+Reviewer subagents in `.claude/agents/` check a change from one angle each, without modifying anything:
+**privacy-reviewer** (personal data in logs, errors and responses), **domain-reviewer** (architecture, DDD rules, ADR consistency),
+**test-reviewer** (coverage at the right level, conventions, flakiness). `/finish-step` says when to use which.
