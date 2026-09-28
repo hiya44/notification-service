@@ -45,7 +45,7 @@ tests/
   NotificationService.Domain.Tests
   NotificationService.Application.Tests   selection, failover, retry, use cases (fakes, FakeTimeProvider)
   NotificationService.Infrastructure.Tests simulated providers, SMTP error classification, startup validation (no Docker)
-  NotificationService.IntegrationTests    Testcontainers PostgreSQL and Mailpit (SMTP); WebApplicationFactory in step 10
+  NotificationService.IntegrationTests    Testcontainers PostgreSQL and Mailpit (SMTP); worker; end-to-end (Api/, WebApplicationFactory)
 ```
 
 Flow: `POST /notifications` -> `SendNotificationHandler` validates and stores a `Pending` notification (202 Accepted) ->
@@ -92,9 +92,15 @@ a background worker claims due notifications -> `NotificationDispatcher` tries e
 - **API (step 9)**: minimal API endpoints in `Api/Notifications` with separate contracts (`SendNotificationRequest` with nullable
   `Channel`, `NotificationResponse`). POST -> 202 + `Location` (named route `GetNotification`) or 200 for a duplicate.
   `ApiExceptionHandler` (IExceptionHandler) maps `DomainException` -> 400, `IdempotencyKeyConflictException` -> 409,
-  `BadHttpRequestException` -> 400 naming only the JSON path. Enums as strings, `allowIntegerValues: false`.
+  `BadHttpRequestException` -> 400 naming only the JSON path (`RouteHandlerOptions.ThrowOnBadRequest = true` in all
+  environments). Enums as strings, `allowIntegerValues: false`.
   `/health/live` (no checks) and `/health/ready` (DbContext check). OpenAPI + Scalar and `MigrateAsync` only in Development.
   `appsettings.Development.json` makes Twilio fail 30% and shortens retries for the demo; config hot-reload verified manually.
+- **End-to-end tests (step 10)**: `NotificationServiceFactory` (WebApplicationFactory<Program> + own PostgresFixture) in the
+  `Api` xUnit collection (shared, sequential). Environment `Testing`; settings via `UseSetting` (connection string, polling 5s,
+  retry 1 min, MaxDispatches 3, jitter 0). Fake `TestProvider`s replace providers under the real names; `FakeTimeProvider`
+  replaces `TimeProvider`. `ApiTestBase`: `DispatchUntilAsync` (advance one polling interval, then poll GET), `AdvancePast(dueAt)`.
+  Observe results only via HTTP. `Program` is public without `public partial class Program` (.NET 10 generates it).
 - **At-least-once delivery**: a crash after a provider accepted a message but before saving can cause a duplicate send. Documented trade-off.
 
 ### Ubiquitous language
@@ -125,14 +131,15 @@ Notification, Channel (`Sms`, `Email`), Recipient, Content, Provider, Delivery a
   `Testcontainers.PostgreSql` >= 4.15.0 (older versions pull a vulnerable SSH.NET).
 - `Microsoft.AspNetCore.OpenApi` 10.0.x allows the vulnerable `Microsoft.OpenApi` 2.0.0 (GHSA-v5pm-xwqc-g5wc); it is pinned
   to a patched 2.x with an explicit `PackageReference` in the Api project.
-- In Development, minimal APIs throw `BadHttpRequestException` for unreadable JSON; without mapping it in `ApiExceptionHandler`,
-  `UseExceptionHandler` turns it into a 500.
+- Minimal APIs throw `BadHttpRequestException` for unreadable JSON only in Development (a bare 400 elsewhere); we set
+  `ThrowOnBadRequest = true` everywhere and map it in `ApiExceptionHandler` (unmapped, `UseExceptionHandler` makes it a 500).
+- xUnit fixtures and the types they expose must be public (`TestProvider` is public for that reason).
 - The generated migration shows an `xmin` column with `rowVersion: true`; Npgsql does not create it (system column). That is expected.
 
 ## Status and remaining steps
 
 Done: 0 skeleton, 1 domain model, 2 retry policy, 3 provider selection, 4 dispatcher with failover, 5 send/query use cases with
-idempotency, 6 PostgreSQL persistence (+ fix: load claimed notifications via LINQ), 7 providers + startup validation, 8 dispatch worker, 9 REST API.
+idempotency, 6 PostgreSQL persistence (+ fix: load claimed notifications via LINQ), 7 providers + startup validation, 8 dispatch worker, 9 REST API, 10 end-to-end tests, 11 README (design decisions, assumptions, trade-offs, next steps, AI usage).
 
 7. **Providers** (`feat(infra)`): simulated `Twilio` and `Vonage` (SMS) and `AmazonSes` (email) sharing a `SimulatedProvider`
    base with configurable behaviour (failure rate, latency, always-fail / permanent-failure modes) so failover can be demoed;
@@ -147,7 +154,8 @@ idempotency, 6 PostgreSQL persistence (+ fix: load claimed notifications via LIN
    in Development.
 10. **End-to-end tests** (`test`): `WebApplicationFactory` + Testcontainers; POST -> worker -> Delivered; failover through the real
     pipeline; retry after all providers fail (fake providers and `FakeTimeProvider` substituted in DI).
-11. **README** (`docs`): design decisions, assumptions, trade-offs, what would come next (circuit breaker per provider, outbox,
+11. **README** (`docs`): (done; the AI usage section combines the Cowork-session summary with the Claude Code session;
+    keep it factual: AI wrote the code, the developer chose, reviewed, validated) design decisions, assumptions, trade-offs, what would come next (circuit breaker per provider, outbox,
     messaging adapter, push channel, auth with per-caller idempotency keys, delivery-status webhooks), and the **AI usage** section:
     tools and models used, what they were used for, where AI materially contributed, and what the developer changed or validated
     (e.g. the vulnerable Testcontainers version caught by warnings-as-errors, the `FromSql` complex-type bug caught by integration

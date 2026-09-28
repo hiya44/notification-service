@@ -26,6 +26,10 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+
+// By default, minimal APIs only throw for unreadable requests in Development and otherwise return a bare 400.
+// Throwing everywhere lets ApiExceptionHandler return the same problem details (naming the invalid field) in every environment.
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 builder.Services.AddOpenApi();
 
 builder.Services.AddHealthChecks()
