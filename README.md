@@ -376,7 +376,6 @@ on their machine, and fixed or redirected the AI where needed.
 |---|---|---|
 | Planning and steps 0–6 (skeleton to persistence) | Claude in the Claude desktop app (Cowork mode), configured for Claude Opus 5.5 | Analysed the task and proposed the architecture, domain model, test plan and a 12-step build plan; wrote the code, tests, README sections and `CLAUDE.md`. It could not build or run anything in its environment, so every build, test and migration ran on the developer's machine. |
 | Steps 7–11 (providers to documentation) | Claude Code (CLI) with Claude Opus 5.5 | Wrote the providers, dispatch worker, API and end-to-end tests, and ran `dotnet build`, `dotnet test` and the application itself before handing each step over. It also looked up package versions and security advisories. |
-
 | After the task | Claude Code with Claude Opus 5.5 | At the developer's request, planned how to prepare the repository for ongoing AI-assisted work, then restructured `CLAUDE.md` into layer guides, wrote the decision records, and added the permission rules and hooks (each hook tested with sample input before being enabled), workflow skills and reviewer subagents. The developer shaped the result, e.g. dropping an interview-specific section from `/finish-step`. |
 
 `CLAUDE.md` (in the repository) carried the context between the two tools: the decisions made so far, conventions, known pitfalls,
